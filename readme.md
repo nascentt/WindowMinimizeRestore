@@ -4,19 +4,19 @@
 
 This app separates two jobs into distinct, customizable shortcut groups:
 
-- **Window placement:** cycle through left/right or upper/lower screen halves and move between screens in that direction.
-- **Window state:** minimize, restore, or maximize a window without cycling through screen halves.
+- **Window placement:** arrange windows in screen halves or corner quarters, and cycle between screens using half-screen positions.
+- **Window state:** minimize, restore, or maximize a window without cycling through screen halves or quarters.
 
-By default, **Ctrl+Alt+Arrow** controls placement and **Ctrl+Shift+Up/Down** controls window state. You can change every shortcut in Settings, and enable horizontal and vertical placement independently.
+By default, **Ctrl+Alt+Arrow** controls placement and **Ctrl+Shift+Up/Down** controls window state. You can change every shortcut in Settings, enable horizontal and vertical placement independently, and disable quarter-screen placement if you prefer to use only halves.
 
 ## Quick start
 
-1. Install **AutoHotkey v1.x** and run `WindowMinimizeRestore.ahk`.
+1. Download the **EXE release**, or install **AutoHotkey v1.x** and run `WindowMinimizeRestore.ahk`.
 2. Press **Ctrl+Alt+Left/Right** to arrange the active window horizontally.
-3. Press **Ctrl+Alt+S** to open Settings. Enable vertical snapping if wanted, and record your preferred shortcuts.
+3. Press **Ctrl+Alt+S** to open Settings. Toggle horizontal/vertical snapping and record your preferred shortcuts. Quarter snapping is enabled by default; disable it in Settings if you prefer halves only.
 4. Save to apply changes immediately and persist them in `WindowMinimizeRestore.ini`.
 
-To stop the app, end its/AutoHotkey process in Task Manager. 
+To stop the app, open Settings (Ctrl+Alt+S by default) and click **Quit** at the far left of the bottom button row. Quit exits the app without saving pending settings edits; **Cancel** or closing the dialog only dismisses Settings and leaves the app running.
 
 ## Default shortcuts
 
@@ -30,9 +30,13 @@ To stop the app, end its/AutoHotkey process in Task Manager.
 
 These are defaults, not fixed bindings. Changing a placement shortcut does not change a window-state shortcut.
 
-## Window placement: halves and multiple screens
+## Window placement: halves, quarters, and multiple screens
 
-Left/Right uses the left and right halves of screens arranged horizontally. Up/Down uses the upper and lower halves of screens arranged vertically. Each snapped window fills the selected half of its destination screen.
+Use Left/Right for horizontal placement and Up/Down for vertical placement. From a half-screen position, a perpendicular arrow selects a corner quarter when quarter snapping is enabled. Half-screen cycling also moves between screens arranged in the requested direction. Each snapped window fills the selected half or quarter of its destination screen’s **usable work area**, leaving room for a visible taskbar. Placement accounts for invisible Windows resize borders so the visible window edges align with that area, rather than leaving a small gap above the taskbar. Windows supplies these bounds for each screen, including taskbars on any edge; monitor navigation still follows the physical screen layout.
+
+### Half-screen cycling
+
+The following rules describe half-screen cycling. Quarter transitions are described separately below.
 
 - From an unsnapped window, the first press selects the requested half of its current screen.
 - Moving toward the other half of the current screen takes **one restored step**, then a second press in that direction snaps to that half (for example, Left from the right half).
@@ -41,7 +45,7 @@ Left/Right uses the left and right halves of screens arranged horizontally. Up/D
 - The restored step uses the window's saved size and relative position **on the screen being cycled**, rather than jumping back to its original screen.
 - At the outermost screen, the cycle **wraps directly** to the opposite half of the farthest screen in the other direction. There is no restored step before that wrap.
 
-### Example: two screens side by side
+#### Example: two screens side by side
 
 With screen A on the left and screen B on the right, start on **B's right half** and repeatedly press Left:
 
@@ -49,13 +53,26 @@ With screen A on the left and screen B on the right, start on **B's right half**
 
 Vertical cycling follows the same pattern for screens positioned above/below one another. Holding a placement shortcut does not repeatedly advance the cycle; release the key between steps.
 
-### Maximize between halves instead of restoring
+#### Maximize between halves instead of restoring
 
-Set `SnapIntermediateState=maximize` in `[Settings]` and restart the app to use a maximized window between halves, on the screen being cycled. This applies to horizontal and vertical placement. For example:
+Choose the middle step when cycling between screen halves: restore the window to its saved size, or maximize it on that screen. This affects horizontal and vertical placement shortcuts (Ctrl+Alt+Arrow by default), **not the separate minimize/maximize shortcuts**.
+
+In Settings, choose **Maximize** under **Between screen halves** and save to apply immediately. For example:
 
 **B right → maximized on B → B left → A right → maximized on A → A left → B right (wrap)**
 
-Use `SnapIntermediateState=restore` (default) for the restored behavior described above. Invalid values fall back to `restore`. This option is INI-only, independent of `SkipRestore`, and does not add a step before wrapping.
+Choose **Restore** for the restored behavior described above. To configure this manually instead, set `SnapIntermediateState=restore` (default) or `SnapIntermediateState=maximize` under `[Settings]` in the INI and restart the app. Invalid values fall back to `restore`. This option is independent of `SkipRestore` and does not add a step before wrapping.
+
+### Quarter-screen placement
+
+Quarter snapping is **enabled by default** (`EnableQuarterSnap=1`). Turn off **Enable quarter-screen snapping** in Settings for half-screen cycling only, or set `EnableQuarterSnap=0` in `[Settings]` and restart the app. Enable both horizontal and vertical snapping to use all four directions.
+
+- **Left/right half + Up/Down** selects the corresponding upper/lower corner.
+- **Upper/lower half + Left/Right** selects the corresponding left/right corner.
+- From a quarter, an arrow toward the other corner first expands to the shared half on the same screen. Press again to select that corner: **top-left → Right → upper half → Right → top-right**, or **top-left → Down → left half → Down → bottom-left**.
+- From a quarter, an arrow toward its existing edge expands to that direction's half. For example, top-left + Left becomes the left half; top-left + Up becomes the upper half. From that half, normal screen cycling resumes.
+
+Example: **left half → Up → top-left quarter → Right → upper half → Right → top-right quarter → Right → right half**. The intermediate step between opposite corners is always a half—not restore/maximize—and there is no cross-screen quarter wrapping. The existing half-screen wrap and intermediate-state options remain unchanged. You can also toggle quarter snapping in Settings. Applications with minimum window sizes may not fit a quarter.
 
 ## Window state: minimize, restore, maximize
 
@@ -66,7 +83,7 @@ The app provides a simple three-stage cycle—minimized, restored, and maximized
 
 With `SkipRestore=1`, these shortcuts jump directly between minimized and maximized instead. The most recently minimized window is remembered so it can be restored after it loses focus.
 
-**`SkipRestore` affects only these window-state actions. It does not remove the restored step between screen halves in the placement cycle.** Disabling horizontal or vertical placement also leaves the window-state shortcuts available.
+**`SkipRestore` affects only these window-state actions. It does not change the intermediate state selected by `SnapIntermediateState` between halves, or the shared-half step between quarters.** Disabling horizontal or vertical placement also leaves the window-state shortcuts available.
 
 ## Customization
 
@@ -75,14 +92,16 @@ With `SkipRestore=1`, these shortcuts jump directly between minimized and maximi
 Open Settings with **Ctrl+Alt+S** by default. It lets you:
 
 - Record shortcuts for all four placement directions, both window-state actions, and opening Settings itself.
-- Enable or disable horizontal and vertical snapping independently.
+- Enable or disable horizontal, vertical, and quarter-screen snapping.
+- Choose Restore or Maximize as the intermediate state between screen halves.
+- Enable geometry diagnostics for troubleshooting.
 - **Skip the restored window stage** in minimize/maximize actions, if preferred.
 
 Click the field beside an action, then press the key combination you want to assign. You can configure Horizontal Left, Horizontal Right, Vertical Up, Vertical Down, Minimize / Restore, Restore / Maximize, and Open Settings. This includes changing the shortcut that opens this dialog.
 
-Select a shortcut-capture field and press the desired combination. Duplicate combinations are rejected. Saving applies changes immediately and writes them to the INI; Cancel discards edits.
+Duplicate combinations are rejected. Saving applies changes immediately and writes them to the INI; Cancel discards edits.
 
-The dialog exposes all seven shortcuts, horizontal/vertical enable toggles, and SkipRestore. **SnapIntermediateState and DebugSnapGeometry are configured only in the INI.**
+The dialog exposes **all seven shortcuts and all six behavior/diagnostic settings** listed below. Saving applies them immediately; no restart is needed when using the dialog.
 
 ### Complete INI reference
 
@@ -93,6 +112,7 @@ The following shows the application's defaults:
 SkipRestore=0
 EnableHorizontalSnap=1
 EnableVerticalSnap=1
+EnableQuarterSnap=1
 SnapIntermediateState=restore
 DebugSnapGeometry=0
 
@@ -106,13 +126,14 @@ RestoreMaximize=^+Up
 Settings=^!s
 ```
 
-| Setting                 | Controls                                                        | Values                              |
-| ----------------------- | --------------------------------------------------------------- | ----------------------------------- |
-| `EnableHorizontalSnap`  | Horizontal placement/cycling                                    | `1` enabled (default); `0` disabled |
-| `EnableVerticalSnap`    | Vertical placement/cycling                                      | `1` enabled (default); `0` disabled |
-| `SnapIntermediateState` | State between halves in horizontal/vertical placement; INI-only | `restore` (default) or `maximize`   |
-| `SkipRestore`           | Restored step in minimize/maximize actions only                 | `0` keep it (default); `1` skip it  |
-| `DebugSnapGeometry`     | Troubleshooting log; INI-only option                            | `0` off (default); `1` on           |
+| Setting                 | Controls                                              | Values                              |
+| ----------------------- | ----------------------------------------------------- | ----------------------------------- |
+| `EnableHorizontalSnap`  | Horizontal placement/cycling                          | `1` enabled (default); `0` disabled |
+| `EnableVerticalSnap`    | Vertical placement/cycling                            | `1` enabled (default); `0` disabled |
+| `EnableQuarterSnap`     | Perpendicular half-to-quarter placement               | `1` enabled (default); `0` disabled |
+| `SnapIntermediateState` | State between halves in horizontal/vertical placement | `restore` (default) or `maximize`   |
+| `SkipRestore`           | Restored step in minimize/maximize actions only       | `0` keep it (default); `1` skip it  |
+| `DebugSnapGeometry`     | Troubleshooting log option                            | `0` off (default); `1` on           |
 
 Every `[Hotkeys]` entry can also be edited through the Settings dialog:
 
@@ -136,4 +157,4 @@ If editing the INI manually, stop the app first, edit `WindowMinimizeRestore.ini
 - **Changes are not taking effect:** check that you are running the latest `.ahk`, not the older compiled `.exe`. Rerunning the app replaces its existing instance (`#singleinstance force`).
 - **Different display scaling:** the app uses per-monitor DPI-aware coordinates. Cross-screen placement moves the window first, waits **75 ms** for its DPI transition, then applies the final destination size. Same-screen placement does not have this pause.
 - **Restoring before placement:** minimized/maximized windows are restored before applying placement bounds. Windows already in their normal state do not receive redundant restore commands.
-- **Geometry diagnostics:** set `DebugSnapGeometry=1` and restart to log requested and actual bounds immediately and at 100, 300, 600, and 1200 ms after snap/restore operations. The log is `WindowMinimizeRestore-debug.log` beside the script; rows include window handles and tick counts. Set the option back to `0` and restart when finished.
+- **Geometry diagnostics:** enable **geometry diagnostics** in Settings (or set `DebugSnapGeometry=1` and restart) to log requested and actual bounds immediately and at 100, 300, 600, and 1200 ms after snap/restore operations. The log is `WindowMinimizeRestore-debug.log` beside the script; rows include window handles and tick counts. Disable diagnostics in Settings when finished, or set the option back to `0` in the INI and restart.

@@ -15,6 +15,9 @@ IniRead, enableHorizontalSnap, %settingsFile%, Settings, EnableHorizontalSnap, 1
 enableHorizontalSnap := (enableHorizontalSnap = 1 || enableHorizontalSnap = "true" || enableHorizontalSnap = "True")
 IniRead, enableVerticalSnap, %settingsFile%, Settings, EnableVerticalSnap, 0
 enableVerticalSnap := (enableVerticalSnap = 1 || enableVerticalSnap = "true" || enableVerticalSnap = "True")
+IniRead, enableQuarterSnap, %settingsFile%, Settings, EnableQuarterSnap, 1
+enableQuarterSnap := (enableQuarterSnap = 1 || enableQuarterSnap = "true" || enableQuarterSnap = "True")
+quarterPlacementRevision := 0
 IniRead, snapIntermediateState, %settingsFile%, Settings, SnapIntermediateState, restore
 snapIntermediateState := (snapIntermediateState = "maximize" ? "maximize" : "restore")
 IniRead, debugSnapGeometry, %settingsFile%, Settings, DebugSnapGeometry, 0
@@ -99,6 +102,10 @@ SettingsSave:
     SaveSettingsDialog()
 return
 
+SettingsQuit:
+    ExitApp
+return
+
 SettingsCancel:
 SettingsGuiClose:
 SettingsGuiEscape:
@@ -128,6 +135,8 @@ ScheduleSnapGeometryTrace(window, axis, side, targetMonitor, expectedX, expected
 RecordSnapGeometry(stage, window, axis, side, targetMonitor, expectedX, expectedY, expectedW, expectedH) {
     global debugLogFile
     WinGetPos, actualX, actualY, actualW, actualH, ahk_id %window%
+    if (axis != "RESTORE")
+        GetVisibleWindowBounds(window, actualX, actualY, actualW, actualH)
     actualMonitor := MonitorForWindow(actualX, actualY, actualW, actualH)
     FormatTime, timestamp,, yyyy-MM-dd HH:mm:ss
     tick := A_TickCount
@@ -169,6 +178,8 @@ ShowSettingsDialog() {
     global cfgHorizontalLeft, cfgHorizontalRight, cfgVerticalUp, cfgVerticalDown
     global cfgMinimizeRestore, cfgRestoreMaximize, cfgSettings
     global cfgEnableHorizontalSnap, cfgEnableVerticalSnap, cfgSkipRestore
+    global enableQuarterSnap, snapIntermediateState, debugSnapGeometry
+    global cfgEnableQuarterSnap, cfgSnapIntermediateState, cfgDebugSnapGeometry
 
     if WinExist("Window Minimize/Restore Settings") {
         Gui, Settings:Show
@@ -178,6 +189,9 @@ ShowSettingsDialog() {
     checkHorizontal := (enableHorizontalSnap ? "Checked" : "")
     checkVertical := (enableVerticalSnap ? "Checked" : "")
     checkSkipRestore := (skipRestore ? "Checked" : "")
+    checkQuarter := (enableQuarterSnap ? "Checked" : "")
+    checkDebug := (debugSnapGeometry ? "Checked" : "")
+    intermediateChoice := (snapIntermediateState = "maximize" ? 2 : 1)
     Gui, Settings:New, +LabelSettingsGui +AlwaysOnTop, Window Minimize/Restore Settings
     Gui, Settings:Margin, 10, 8
     Gui, Settings:Add, Text, x10 y10 w210, Horizontal Left
@@ -197,9 +211,14 @@ ShowSettingsDialog() {
     Gui, Settings:Add, Checkbox, x10 y225 vcfgEnableHorizontalSnap %checkHorizontal%, Enable horizontal snapping
     Gui, Settings:Add, Checkbox, x10 y250 vcfgEnableVerticalSnap %checkVertical%, Enable vertical snapping
     Gui, Settings:Add, Checkbox, x10 y275 vcfgSkipRestore %checkSkipRestore%, Skip the restored window stage (minimize/maximize)
-    Gui, Settings:Add, Button, x250 y315 w75 Default gSettingsSave, Save
-    Gui, Settings:Add, Button, x335 y315 w75 gSettingsCancel, Cancel
-    Gui, Settings:Show, w425 h350
+    Gui, Settings:Add, Checkbox, x10 y300 w405 vcfgEnableQuarterSnap %checkQuarter%, Enable quarter-screen snapping
+    Gui, Settings:Add, Text, x10 y330 w210, Between screen halves:
+    Gui, Settings:Add, DropDownList, x230 y327 w180 vcfgSnapIntermediateState Choose%intermediateChoice%, Restore|Maximize
+    Gui, Settings:Add, Checkbox, x10 y365 w405 vcfgDebugSnapGeometry %checkDebug%, Enable geometry diagnostics (troubleshooting)
+    Gui, Settings:Add, Button, x10 y405 w75 gSettingsQuit, Quit
+    Gui, Settings:Add, Button, x250 y405 w75 Default gSettingsSave, Save
+    Gui, Settings:Add, Button, x335 y405 w75 gSettingsCancel, Cancel
+    Gui, Settings:Show, w425 h440
 }
 
 SaveSettingsDialog() {
@@ -209,6 +228,8 @@ SaveSettingsDialog() {
     global cfgHorizontalLeft, cfgHorizontalRight, cfgVerticalUp, cfgVerticalDown
     global cfgMinimizeRestore, cfgRestoreMaximize, cfgSettings
     global cfgEnableHorizontalSnap, cfgEnableVerticalSnap, cfgSkipRestore
+    global enableQuarterSnap, snapIntermediateState, debugSnapGeometry
+    global cfgEnableQuarterSnap, cfgSnapIntermediateState, cfgDebugSnapGeometry
 
     Gui, Settings:Submit, NoHide
     hotkeys := [cfgHorizontalLeft, cfgHorizontalRight, cfgVerticalUp, cfgVerticalDown, cfgMinimizeRestore, cfgRestoreMaximize, cfgSettings]
@@ -236,8 +257,14 @@ SaveSettingsDialog() {
     enableHorizontalSnap := cfgEnableHorizontalSnap
     enableVerticalSnap := cfgEnableVerticalSnap
     skipRestore := cfgSkipRestore
+    enableQuarterSnap := cfgEnableQuarterSnap
+    snapIntermediateState := (cfgSnapIntermediateState = "Maximize" ? "maximize" : "restore")
+    debugSnapGeometry := cfgDebugSnapGeometry
 
     IniWrite, %skipRestore%, %settingsFile%, Settings, SkipRestore
+    IniWrite, %enableQuarterSnap%, %settingsFile%, Settings, EnableQuarterSnap
+    IniWrite, %snapIntermediateState%, %settingsFile%, Settings, SnapIntermediateState
+    IniWrite, %debugSnapGeometry%, %settingsFile%, Settings, DebugSnapGeometry
     IniWrite, %enableHorizontalSnap%, %settingsFile%, Settings, EnableHorizontalSnap
     IniWrite, %enableVerticalSnap%, %settingsFile%, Settings, EnableVerticalSnap
     IniWrite, %hotkeyHorizontalLeft%, %settingsFile%, Hotkeys, HorizontalLeft
@@ -253,7 +280,8 @@ SaveSettingsDialog() {
 }
 
 CycleWindow(direction) {
-    global debugSnapGeometry
+    global debugSnapGeometry, quarterPlacementRevision
+    static lastQuarterRevision := 0
     static currentWindow := 0
     static restoreX := 0, restoreY := 0, restoreW := 0, restoreH := 0, restoreMonitor := 0
     static snappedSide := 0, snappedMonitor := 0
@@ -263,6 +291,21 @@ CycleWindow(direction) {
     if (!window)
         return
 
+    if (lastQuarterRevision != quarterPlacementRevision) {
+        snappedSide := 0, snappedMonitor := 0, pendingSide := 0
+        lastQuarterRevision := quarterPlacementRevision
+    }
+    if (window != currentWindow) {
+        ; Keep valid restore geometry even when this axis first sees a quarter transition.
+        WinGetPos, restoreX, restoreY, restoreW, restoreH, ahk_id %window%
+        restoreMonitor := MonitorForWindow(restoreX, restoreY, restoreW, restoreH)
+    }
+    if (TryQuarterSnap(window, "H", direction, quarterHalf, quarterMonitor)) {
+        currentWindow := window
+        snappedSide := quarterHalf, snappedMonitor := quarterMonitor, pendingSide := 0
+        lastQuarterRevision := quarterPlacementRevision
+        return
+    }
     WinGet, state, MinMax, ahk_id %window%
     if (state != 0)
         RestoreWindowBeforeMove(window)
@@ -309,7 +352,7 @@ CycleWindow(direction) {
             }
         }
     }
-    SysGet, mon, Monitor, %targetMonitor%
+    SysGet, mon, MonitorWorkArea, %targetMonitor%
     left := monLeft, top := monTop
     width := monRight - monLeft, height := monBottom - monTop
     RestoreWindowBeforeMove(window)
@@ -319,7 +362,7 @@ CycleWindow(direction) {
     } else {
         snapX := left + halfWidth, snapY := top, snapW := width - halfWidth, snapH := height
     }
-    MoveWindowToBounds(window, targetMonitor, snapX, snapY, snapW, snapH)
+    MoveWindowToBounds(window, targetMonitor, snapX, snapY, snapW, snapH, true)
     if (debugSnapGeometry) {
         RecordSnapGeometry("immediate", window, "H", side, targetMonitor, snapX, snapY, snapW, snapH)
         ScheduleSnapGeometryTrace(window, "H", side, targetMonitor, snapX, snapY, snapW, snapH)
@@ -329,7 +372,8 @@ CycleWindow(direction) {
 }
 
 CycleWindowVertical(direction) {
-    global debugSnapGeometry
+    global debugSnapGeometry, quarterPlacementRevision
+    static lastQuarterRevision := 0
     static currentWindow := 0
     static restoreX := 0, restoreY := 0, restoreW := 0, restoreH := 0, restoreMonitor := 0
     static snappedSide := 0, snappedMonitor := 0
@@ -339,6 +383,21 @@ CycleWindowVertical(direction) {
     if (!window)
         return
 
+    if (lastQuarterRevision != quarterPlacementRevision) {
+        snappedSide := 0, snappedMonitor := 0, pendingSide := 0
+        lastQuarterRevision := quarterPlacementRevision
+    }
+    if (window != currentWindow) {
+        ; Keep valid restore geometry even when this axis first sees a quarter transition.
+        WinGetPos, restoreX, restoreY, restoreW, restoreH, ahk_id %window%
+        restoreMonitor := MonitorForWindow(restoreX, restoreY, restoreW, restoreH)
+    }
+    if (TryQuarterSnap(window, "V", direction, quarterHalf, quarterMonitor)) {
+        currentWindow := window
+        snappedSide := quarterHalf, snappedMonitor := quarterMonitor, pendingSide := 0
+        lastQuarterRevision := quarterPlacementRevision
+        return
+    }
     WinGet, state, MinMax, ahk_id %window%
     if (state != 0)
         RestoreWindowBeforeMove(window)
@@ -382,7 +441,7 @@ CycleWindowVertical(direction) {
             }
         }
     }
-    SysGet, mon, Monitor, %targetMonitor%
+    SysGet, mon, MonitorWorkArea, %targetMonitor%
     left := monLeft, top := monTop
     width := monRight - monLeft, height := monBottom - monTop
     RestoreWindowBeforeMove(window)
@@ -392,7 +451,7 @@ CycleWindowVertical(direction) {
     } else {
         snapX := left, snapY := top + halfHeight, snapW := width, snapH := height - halfHeight
     }
-    MoveWindowToBounds(window, targetMonitor, snapX, snapY, snapW, snapH)
+    MoveWindowToBounds(window, targetMonitor, snapX, snapY, snapW, snapH, true)
     if (debugSnapGeometry) {
         RecordSnapGeometry("immediate", window, "V", side, targetMonitor, snapX, snapY, snapW, snapH)
         ScheduleSnapGeometryTrace(window, "V", side, targetMonitor, snapX, snapY, snapW, snapH)
@@ -401,7 +460,68 @@ CycleWindowVertical(direction) {
     snappedMonitor := targetMonitor
 }
 
-MoveWindowToBounds(window, targetMonitor, x, y, width, height) {
+; Infer halves/corners from actual bounds, not the other axis's private cycle state.
+TryQuarterSnap(window, axis, direction, ByRef resultHalf, ByRef resultMonitor) {
+    global enableQuarterSnap, quarterPlacementRevision, debugSnapGeometry
+    if (!enableQuarterSnap)
+        return false
+    WinGet, state, MinMax, ahk_id %window%
+    if (state != 0)
+        return false
+    GetVisibleWindowBounds(window, x, y, w, h)
+    monitor := MonitorForWindow(x, y, w, h)
+    SysGet, mon, MonitorWorkArea, %monitor%
+    fullW := monRight - monLeft, fullH := monBottom - monTop
+    halfW := Floor(fullW / 2), halfH := Floor(fullH / 2)
+    horizontal := 0, vertical := 0
+    if (Abs(x - monLeft) <= 12 && Abs(w - halfW) <= 12)
+        horizontal := -1
+    else if (Abs(x - monLeft - halfW) <= 12 && Abs(w - (fullW - halfW)) <= 12)
+        horizontal := 1
+    if (Abs(y - monTop) <= 12 && Abs(h - halfH) <= 12)
+        vertical := -1
+    else if (Abs(y - monTop - halfH) <= 12 && Abs(h - (fullH - halfH)) <= 12)
+        vertical := 1
+    fullWidth := Abs(x - monLeft) <= 12 && Abs(w - fullW) <= 12
+    fullHeight := Abs(y - monTop) <= 12 && Abs(h - fullH) <= 12
+    if (axis = "H") {
+        if (!vertical || (!horizontal && !fullWidth))
+            return false
+        if (horizontal = direction) {
+            vertical := 0 ; Existing outer edge: expand back to the horizontal half.
+        } else if (horizontal) {
+            horizontal := 0 ; Opposite corner: visit the shared upper/lower half first.
+        } else {
+            horizontal := direction
+        }
+        resultHalf := (vertical ? 0 : horizontal)
+    } else {
+        if (!horizontal || (!vertical && !fullHeight))
+            return false
+        if (vertical = direction) {
+            horizontal := 0 ; Existing outer edge: expand back to the vertical half.
+        } else if (vertical) {
+            vertical := 0 ; Opposite corner: visit the shared left/right half first.
+        } else {
+            vertical := direction
+        }
+        resultHalf := (horizontal ? 0 : vertical)
+    }
+    targetX := monLeft + (horizontal > 0 ? halfW : 0)
+    targetY := monTop + (vertical > 0 ? halfH : 0)
+    targetW := (!horizontal ? fullW : (horizontal < 0 ? halfW : fullW - halfW))
+    targetH := (!vertical ? fullH : (vertical < 0 ? halfH : fullH - halfH))
+    MoveWindowToBounds(window, monitor, targetX, targetY, targetW, targetH, true)
+    resultMonitor := monitor
+    quarterPlacementRevision += 1
+    if (debugSnapGeometry) {
+        RecordSnapGeometry("quarter-immediate", window, axis, direction, monitor, targetX, targetY, targetW, targetH)
+        ScheduleSnapGeometryTrace(window, axis, direction, monitor, targetX, targetY, targetW, targetH)
+    }
+    return true
+}
+
+MoveWindowToBounds(window, targetMonitor, x, y, width, height, alignVisible := false) {
     WinGetPos, oldX, oldY, oldW, oldH, ahk_id %window%
     sourceMonitor := MonitorForWindow(oldX, oldY, oldW, oldH)
     if (sourceMonitor != targetMonitor) {
@@ -410,7 +530,31 @@ MoveWindowToBounds(window, targetMonitor, x, y, width, height) {
         WinMove, ahk_id %window%,, %x%, %y%
         Sleep, 75
     }
+    if (alignVisible) {
+        ; WinMove uses outer bounds; DWM excludes the invisible resize margins.
+        WinGetPos, outerX, outerY, outerW, outerH, ahk_id %window%
+        if (GetVisibleWindowBounds(window, visibleX, visibleY, visibleW, visibleH)) {
+            x -= visibleX - outerX
+            y -= visibleY - outerY
+            width += outerW - visibleW
+            height += outerH - visibleH
+        }
+    }
     WinMove, ahk_id %window%,, %x%, %y%, %width%, %height%
+}
+
+GetVisibleWindowBounds(window, ByRef x, ByRef y, ByRef width, ByRef height) {
+    WinGetPos, x, y, width, height, ahk_id %window%
+    VarSetCapacity(frame, 16, 0)
+    result := DllCall("Dwmapi\DwmGetWindowAttribute", "Ptr", window, "UInt", 9, "Ptr", &frame, "UInt", 16, "Int")
+    if (result != 0)
+        return false
+    left := NumGet(frame, 0, "Int"), top := NumGet(frame, 4, "Int")
+    right := NumGet(frame, 8, "Int"), bottom := NumGet(frame, 12, "Int")
+    if (right <= left || bottom <= top)
+        return false
+    x := left, y := top, width := right - left, height := bottom - top
+    return true
 }
 
 RestoreWindowBeforeMove(window) {
